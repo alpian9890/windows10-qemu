@@ -70,6 +70,9 @@ function main() {
       case "download-virtio":
         downloadVirtio(parseArgs(rest));
         return;
+      case "status":
+        showStatus(parseArgs(rest));
+        return;
       case "create-container":
         createContainer(parseArgs(rest));
         return;
@@ -128,6 +131,7 @@ function runInteractiveMenu() {
   ensureInteractiveTerminal();
   while (true) {
     const choice = menu("Winmu", "Pilih aksi:", [
+      ["status", "Status"],
       ["setup", "Setup qemu"],
       ["download-os", "Download OS"],
       ["download-virtio", "Download driver virtio"],
@@ -137,6 +141,9 @@ function runInteractiveMenu() {
     ]);
 
     switch (choice) {
+      case "status":
+        showStatus({ interactive: true });
+        break;
       case "setup":
         setupQemu({ interactive: true });
         break;
@@ -241,6 +248,12 @@ function downloadVirtio(options = {}) {
   }
 
   notify(interactive, "Download Virtio", `Driver virtio siap di ${VIRTIO_DIR}`);
+}
+
+function showStatus(options = {}) {
+  const interactive = !!options.interactive;
+  const report = buildStatusReport();
+  notify(interactive, "Status Winmu", report);
 }
 
 function createContainer(options = {}) {
@@ -586,6 +599,92 @@ function listContainers() {
     .sort((left, right) => left.vmName.localeCompare(right.vmName));
 }
 
+function buildStatusReport() {
+  const config = loadConfig();
+  const requiredRuntimeCommands = [
+    "qemu-system-x86_64",
+    "qemu-img",
+    "systemctl",
+    "whiptail",
+    "curl",
+    "tar",
+    "split"
+  ];
+  const installedRuntimeCommands = requiredRuntimeCommands.filter((command) => commandExists(command));
+  const missingRuntimeCommands = requiredRuntimeCommands.filter((command) => !commandExists(command));
+
+  const osIsoPath = path.join(OS_DIR, config.os.extractedIsoName);
+  const osImgPath = path.join(OS_DIR, config.os.extractedImgName);
+  const virtioPath = path.join(VIRTIO_DIR, config.virtio.targetName);
+  const osDirEntries = fs.existsSync(OS_DIR) ? fs.readdirSync(OS_DIR).sort() : [];
+  const containers = listContainers();
+  const runningContainers = containers.filter((container) => systemdUnitIsActive(container.service));
+
+  const lines = [
+    "=== QEMU ===",
+    `Status         : ${missingRuntimeCommands.length === 0 ? "Siap" : "Belum lengkap"}`,
+    `Command siap   : ${installedRuntimeCommands.join(", ") || "-"}`,
+    `Command hilang : ${missingRuntimeCommands.join(", ") || "-"}`,
+    `KVM device     : ${fs.existsSync("/dev/kvm") ? "Ada" : "Tidak ada"}`,
+    "",
+    "=== Asset /etc/winmu ===",
+    `Folder base    : ${fs.existsSync(BASE_DIR) ? "Ada" : "Tidak ada"} (${BASE_DIR})`,
+    `Folder os      : ${fs.existsSync(OS_DIR) ? "Ada" : "Tidak ada"} (${OS_DIR})`,
+    `windows10.iso  : ${fileStatusLine(osIsoPath)}`,
+    `windows10.img  : ${fileStatusLine(osImgPath)}`,
+    `virtio-win.iso : ${fileStatusLine(virtioPath)}`,
+    `Isi folder os  : ${osDirEntries.length > 0 ? osDirEntries.join(", ") : "-"}`,
+    `OS siap pakai  : ${fs.existsSync(osIsoPath) && fs.existsSync(osImgPath) ? "Ya" : "Belum"}`,
+    "",
+    "=== Container ===",
+    `Terdaftar      : ${containers.length}`,
+    `Sedang aktif   : ${runningContainers.length}`,
+    `Daftar VM      : ${formatContainerList(containers)}`,
+    `VM aktif       : ${formatContainerList(runningContainers)}`,
+    "",
+    "=== Runtime ===",
+    `PID upload     : ${findUploadReleasePid() || "-"}`
+  ];
+
+  return lines.join("\n");
+}
+
+function fileStatusLine(filePath) {
+  if (!fs.existsSync(filePath)) {
+    return "Belum ada";
+  }
+
+  const stats = fs.statSync(filePath);
+  return `Ada (${formatBytes(stats.size)})`;
+}
+
+function formatContainerList(containers) {
+  if (containers.length === 0) {
+    return "-";
+  }
+
+  return containers
+    .map((container) => `${container.vmName}:${systemdUnitIsActive(container.service) ? "aktif" : "mati"}`)
+    .join(", ");
+}
+
+function systemdUnitIsActive(unitName) {
+  const result = spawnSync("systemctl", ["is-active", unitName], { encoding: "utf8" });
+  return result.status === 0 && result.stdout.trim() === "active";
+}
+
+function findUploadReleasePid() {
+  const result = spawnSync("pgrep", ["-f", "node scripts/upload-release.js"], { encoding: "utf8" });
+  if (result.status !== 0) {
+    return null;
+  }
+
+  return (result.stdout || "")
+    .trim()
+    .split("\n")
+    .filter(Boolean)[0] || null;
+}
+
 function findNextVncDisplay() {
   const used = new Set(listContainers().map((container) => Number(container.vncDisplay)));
   let candidate = 1;
@@ -798,6 +897,20 @@ function readFirstMatch(filePath, pattern) {
 
 function toHumanGb(mb) {
   return (mb / 1024).toFixed(1);
+}
+
+function formatBytes(bytes) {
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = Number(bytes);
+  let unitIndex = 0;
+
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+
+  const precision = unitIndex === 0 ? 0 : 1;
+  return `${value.toFixed(precision)} ${units[unitIndex]}`;
 }
 
 function parseArgs(args) {
