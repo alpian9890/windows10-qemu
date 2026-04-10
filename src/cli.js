@@ -125,6 +125,7 @@ function loadConfig() {
 
 function runInteractiveMenu() {
   ensureWhiptail();
+  ensureInteractiveTerminal();
   while (true) {
     const choice = menu("Winmu", "Pilih aksi:", [
       ["setup", "Setup qemu"],
@@ -498,6 +499,12 @@ function ensureWhiptail() {
   }
 }
 
+function ensureInteractiveTerminal() {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    fatal("Mode TUI winmu membutuhkan terminal interaktif (TTY).");
+  }
+}
+
 function ensureQemuInstalled() {
   for (const command of ["qemu-system-x86_64", "qemu-img", "systemctl"]) {
     if (!commandExists(command)) {
@@ -641,12 +648,16 @@ function buildReleaseAssetUrl(config, assetName) {
 
 function menu(title, prompt, items) {
   ensureWhiptail();
+  ensureInteractiveTerminal();
   const args = ["--title", title, "--menu", prompt, "20", "90", String(items.length)];
   for (const [tag, description] of items) {
     args.push(tag, description);
   }
 
-  const result = spawnSync("whiptail", args, { encoding: "utf8" });
+  const result = spawnSync("whiptail", args, {
+    encoding: "utf8",
+    stdio: ["inherit", "inherit", "pipe"]
+  });
   if (result.status === 255 || result.status === 1) {
     return null;
   }
@@ -658,10 +669,14 @@ function menu(title, prompt, items) {
 
 function inputbox(title, prompt, defaultValue = "") {
   ensureWhiptail();
+  ensureInteractiveTerminal();
   const result = spawnSync(
     "whiptail",
     ["--title", title, "--inputbox", prompt, "10", "80", defaultValue],
-    { encoding: "utf8" }
+    {
+      encoding: "utf8",
+      stdio: ["inherit", "inherit", "pipe"]
+    }
   );
 
   if (result.status === 255 || result.status === 1) {
@@ -675,7 +690,15 @@ function inputbox(title, prompt, defaultValue = "") {
 
 function yesno(title, prompt) {
   ensureWhiptail();
-  const result = spawnSync("whiptail", ["--title", title, "--yesno", prompt, "10", "80"], { encoding: "utf8" });
+  ensureInteractiveTerminal();
+  const result = spawnSync(
+    "whiptail",
+    ["--title", title, "--yesno", prompt, "10", "80"],
+    {
+      encoding: "utf8",
+      stdio: ["inherit", "inherit", "pipe"]
+    }
+  );
   if (result.status === 255 || result.status === 1) {
     return false;
   }
@@ -687,7 +710,15 @@ function yesno(title, prompt) {
 
 function msgbox(title, message) {
   ensureWhiptail();
-  const result = spawnSync("whiptail", ["--title", title, "--msgbox", message, "20", "90"], { encoding: "utf8" });
+  ensureInteractiveTerminal();
+  const result = spawnSync(
+    "whiptail",
+    ["--title", title, "--msgbox", message, "20", "90"],
+    {
+      encoding: "utf8",
+      stdio: ["inherit", "inherit", "pipe"]
+    }
+  );
   if (result.status !== 0 && result.status !== 255) {
     throw new Error(result.stderr.trim() || "Gagal menampilkan pesan.");
   }
