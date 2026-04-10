@@ -7,7 +7,8 @@
   },
   "type": "commonjs",
   "scripts": {
-    "build": "pkg . --targets node18-linux-x64 --output dist/winmu"
+    "build": "pkg . --targets node18-linux-x64 --output dist/winmu",
+    "upload:release": "node scripts/upload-release.js"
   },
   "devDependencies": {
     "pkg": "^5.8.1"
