@@ -7,7 +7,7 @@ Fitur utama:
 - Setup paket QEMU
 - Download OS Windows dari GitHub Releases lalu ekstrak ke `/etc/winmu/os`
 - Download driver virtio ke `/etc/winmu/virtio`
-- Create/Delete VM QEMU yang disimpan di `~/<nama-vm>`
+- Create/List/Delete VM QEMU yang disimpan di `~/<nama-vm>`
 - Menjalankan VM sebagai service `systemd`
 - Menyiapkan split archive asset OS untuk GitHub Releases
 

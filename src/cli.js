@@ -73,6 +73,9 @@ function main() {
       case "status":
         showStatus(parseArgs(rest));
         return;
+      case "list-containers":
+        listContainersCommand(parseArgs(rest));
+        return;
       case "uninstall":
         uninstallWinmu(parseArgs(rest));
         return;
@@ -138,6 +141,7 @@ function runInteractiveMenu() {
       ["setup", "Setup qemu"],
       ["download-os", "Download OS"],
       ["download-virtio", "Download driver virtio"],
+      ["list", "List Containers"],
       ["create", "Create Container"],
       ["delete", "Delete Container"],
       ["uninstall", "Uninstall"],
@@ -156,6 +160,9 @@ function runInteractiveMenu() {
         break;
       case "download-virtio":
         downloadVirtio({ interactive: true });
+        break;
+      case "list":
+        listContainersCommand({ interactive: true });
         break;
       case "create":
         createContainer({ interactive: true });
@@ -261,6 +268,12 @@ function showStatus(options = {}) {
   const interactive = !!options.interactive;
   const report = buildStatusReport();
   notify(interactive, "Status Winmu", report);
+}
+
+function listContainersCommand(options = {}) {
+  const interactive = !!options.interactive;
+  const report = buildContainersReport();
+  notify(interactive, "List Containers", report);
 }
 
 function uninstallWinmu(options = {}) {
@@ -709,6 +722,42 @@ function buildStatusReport() {
   ];
 
   return lines.join("\n");
+}
+
+function buildContainersReport() {
+  const containers = listContainers();
+  if (containers.length === 0) {
+    return [
+      "=== List Containers ===",
+      "Total VM : 0",
+      "Detail   : Belum ada container VM."
+    ].join("\n");
+  }
+
+  const lines = [
+    "=== List Containers ===",
+    `Total VM : ${containers.length}`,
+    ""
+  ];
+
+  containers.forEach((container, index) => {
+    const active = systemdUnitIsActive(container.service);
+    lines.push(`VM ${index + 1}`);
+    lines.push(`Nama         : ${container.vmName}`);
+    lines.push(`Status       : ${active ? "online" : "offline"}`);
+    lines.push(`Profil       : ${container.profile}`);
+    lines.push(`CPU          : ${container.cpu}`);
+    lines.push(`RAM          : ${container.ramMb} MB (${toHumanGb(container.ramMb)} GB)`);
+    lines.push(`Disk         : ${container.diskGb} GB`);
+    lines.push(`VNC display  : :${container.vncDisplay}`);
+    lines.push(`VNC port     : ${5900 + Number(container.vncDisplay)}`);
+    lines.push(`Folder VM    : ${container.vmDir}`);
+    lines.push(`Disk overlay : ${container.overlayPath}`);
+    lines.push(`Service      : ${container.service}`);
+    lines.push("");
+  });
+
+  return lines.join("\n").trimEnd();
 }
 
 function fileStatusLine(filePath) {
