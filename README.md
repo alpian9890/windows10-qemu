@@ -38,6 +38,19 @@ wget -qO- https://github.com/alpian9890/windows10-qemu/releases/download/assets/
 winmu
 ```
 
+## Login Windows
+
+Default login Windows 10 Pro:
+
+```text
+Username: Admin
+Password: Admin
+```
+
+Catatan recovery question:
+
+- Untuk semua pertanyaan recovery, isi `Admin`
+
 ## Utility untuk maintainer
 
 Membuat split archive asset release dari file yang sudah ada di server:
