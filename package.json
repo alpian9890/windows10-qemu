@@ -1,0 +1,19 @@
+{
+  "name": "winmu",
+  "version": "1.0.0",
+  "description": "Single-binary TUI manager for Windows on QEMU",
+  "bin": {
+    "winmu": "src/cli.js"
+  },
+  "type": "commonjs",
+  "scripts": {
+    "build": "pkg . --targets node18-linux-x64 --output dist/winmu"
+  },
+  "devDependencies": {
+    "pkg": "^5.8.1"
+  },
+  "pkg": {
+    "outputPath": "dist"
+  },
+  "license": "MIT"
+}
