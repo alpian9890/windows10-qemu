@@ -23,13 +23,13 @@ npm run build
 Install langsung dari GitHub Release tanpa build dari source.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alpian9890/windows10-qemu/main/install-winmu.sh | bash
+curl -fsSL https://github.com/alpian9890/windows10-qemu/releases/download/assets/install-winmu.sh | bash
 ```
 
 Atau dengan `wget`:
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/alpian9890/windows10-qemu/main/install-winmu.sh | bash
+wget -qO- https://github.com/alpian9890/windows10-qemu/releases/download/assets/install-winmu.sh | bash
 ```
 
 ## Jalankan
