@@ -73,6 +73,9 @@ function main() {
       case "status":
         showStatus(parseArgs(rest));
         return;
+      case "uninstall":
+        uninstallWinmu(parseArgs(rest));
+        return;
       case "create-container":
         createContainer(parseArgs(rest));
         return;
@@ -137,6 +140,7 @@ function runInteractiveMenu() {
       ["download-virtio", "Download driver virtio"],
       ["create", "Create Container"],
       ["delete", "Delete Container"],
+      ["uninstall", "Uninstall"],
       ["exit", "Keluar"]
     ]);
 
@@ -159,6 +163,9 @@ function runInteractiveMenu() {
       case "delete":
         deleteContainer({ interactive: true });
         break;
+      case "uninstall":
+        uninstallWinmu({ interactive: true });
+        return;
       case "exit":
       case null:
         return;
@@ -254,6 +261,39 @@ function showStatus(options = {}) {
   const interactive = !!options.interactive;
   const report = buildStatusReport();
   notify(interactive, "Status Winmu", report);
+}
+
+function uninstallWinmu(options = {}) {
+  const interactive = !!options.interactive;
+  const force = options.yes === true || options.y === true;
+  const uninstallMessage = [
+    "Uninstall winmu akan:",
+    "- Menghapus semua container VM yang dibuat winmu",
+    "- Menghapus service systemd winmu",
+    "- Menghapus semua data di /etc/winmu",
+    "- Menghapus binary /usr/bin/winmu",
+    "",
+    "Lanjutkan?"
+  ].join("\n");
+
+  if (interactive) {
+    if (!yesno("Uninstall Winmu", uninstallMessage)) {
+      return;
+    }
+  } else if (!force) {
+    fatal("Gunakan --yes untuk uninstall non-interaktif.");
+  }
+
+  const containers = listContainers();
+  for (const container of containers) {
+    removeContainer(container);
+  }
+
+  removeStrayWinmuServices();
+  fs.rmSync(BASE_DIR, { recursive: true, force: true });
+  fs.rmSync("/usr/bin/winmu", { force: true });
+
+  notify(interactive, "Uninstall Winmu", "winmu berhasil di-uninstall dan semua resource dikelola sudah dibersihkan.");
 }
 
 function createContainer(options = {}) {
@@ -424,10 +464,7 @@ function deleteContainer(options = {}) {
     return;
   }
 
-  runCommand("systemctl", ["disable", "--now", container.service], { allowFailure: true });
-  fs.rmSync(path.join(SYSTEMD_DIR, container.service), { force: true });
-  fs.rmSync(container.vmDir, { recursive: true, force: true });
-  fs.rmSync(path.join(CONTAINERS_DIR, `${container.vmName}.json`), { force: true });
+  removeContainer(container);
   runCommand("systemctl", ["daemon-reload"]);
 
   notify(interactive, "Delete Container", `VM ${container.vmName} berhasil dihapus.`);
@@ -597,6 +634,31 @@ function listContainers() {
     .filter((name) => name.endsWith(".json"))
     .map((name) => JSON.parse(fs.readFileSync(path.join(CONTAINERS_DIR, name), "utf8")))
     .sort((left, right) => left.vmName.localeCompare(right.vmName));
+}
+
+function removeContainer(container) {
+  runCommand("systemctl", ["disable", "--now", container.service], { allowFailure: true });
+  fs.rmSync(path.join(SYSTEMD_DIR, container.service), { force: true });
+  fs.rmSync(container.vmDir, { recursive: true, force: true });
+  fs.rmSync(path.join(CONTAINERS_DIR, `${container.vmName}.json`), { force: true });
+  runCommand("systemctl", ["daemon-reload"], { allowFailure: true });
+}
+
+function removeStrayWinmuServices() {
+  if (!fs.existsSync(SYSTEMD_DIR)) {
+    return;
+  }
+
+  const services = fs
+    .readdirSync(SYSTEMD_DIR)
+    .filter((name) => /^winmu-.*\.service$/.test(name));
+
+  for (const service of services) {
+    runCommand("systemctl", ["disable", "--now", service], { allowFailure: true });
+    fs.rmSync(path.join(SYSTEMD_DIR, service), { force: true });
+  }
+
+  runCommand("systemctl", ["daemon-reload"], { allowFailure: true });
 }
 
 function buildStatusReport() {

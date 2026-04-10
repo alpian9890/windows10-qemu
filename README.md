@@ -20,20 +20,16 @@ npm run build
 
 ## Install binary
 
-Install binary langsung dari GitHub Release agar tidak perlu build dari awal.
+Install langsung dari GitHub Release tanpa build dari source.
 
 ```bash
-curl -L -o /tmp/winmu \
-  https://github.com/alpian9890/windows10-qemu/releases/download/assets/winmu-linux-x64
-install -m755 /tmp/winmu /usr/bin/winmu
+curl -fsSL https://raw.githubusercontent.com/alpian9890/windows10-qemu/main/install-winmu.sh | bash
 ```
 
 Atau dengan `wget`:
 
 ```bash
-wget -O /tmp/winmu \
-  https://github.com/alpian9890/windows10-qemu/releases/download/assets/winmu-linux-x64
-install -m755 /tmp/winmu /usr/bin/winmu
+wget -qO- https://raw.githubusercontent.com/alpian9890/windows10-qemu/main/install-winmu.sh | bash
 ```
 
 ## Jalankan
