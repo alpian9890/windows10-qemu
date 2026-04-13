@@ -8,6 +8,7 @@ Fitur utama:
 - Download OS Windows dari GitHub Releases lalu ekstrak ke `/etc/winmu/os`
 - Download driver virtio ke `/etc/winmu/virtio`
 - Create/List/Delete VM QEMU yang disimpan di `~/<nama-vm>`
+- Profil VM `small`, `medium`, `large`, dan `custom`
 - Menjalankan VM sebagai service `systemd`
 - Menyiapkan split archive asset OS untuk GitHub Releases
 
@@ -37,6 +38,14 @@ wget -qO- https://github.com/alpian9890/windows10-qemu/releases/download/assets/
 ```bash
 winmu
 ```
+
+Untuk create container custom dari CLI:
+
+```bash
+winmu create-container --profile custom --cpu 1 --ram-mb 768 --disk-gb 20 --name win10-custom --yes
+```
+
+Mode `custom` tetap menampilkan rekomendasi aman, tetapi keputusan akhir ada di pengguna. Gunakan `--yes` jika ingin tetap lanjut saat spec custom melewati rekomendasi aman default.
 
 ## Login Windows
 

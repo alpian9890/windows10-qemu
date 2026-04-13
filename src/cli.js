@@ -325,38 +325,36 @@ function createContainer(options = {}) {
     ? menu("Create Container", "Pilih profil VM:", [
         ["small", describeProfile("small")],
         ["medium", describeProfile("medium")],
-        ["large", describeProfile("large")]
+        ["large", describeProfile("large")],
+        ["custom", "Custom | CPU / RAM / disk bebas dengan warning"]
       ])
     : "small");
 
   if (!profileKey) {
     return;
   }
-  if (!VM_PROFILES[profileKey]) {
+  if (!VM_PROFILES[profileKey] && profileKey !== "custom") {
     fatal(`Profile tidak dikenal: ${profileKey}`);
   }
 
-  const profile = VM_PROFILES[profileKey];
   const specs = detectHostSpecs();
   const allocations = readContainerAllocations();
+  const baseDiskMinGb = getBaseImageMinDiskGb(osImagePath);
+  const profile = profileKey === "custom"
+    ? resolveCustomProfile(options, { interactive, baseDiskMinGb })
+    : { ...VM_PROFILES[profileKey], key: profileKey };
   const recommendation = calculateCapacity(specs, allocations, profile);
+  const assessment = assessProfileRequest(specs, allocations, profile);
 
-  const summary = [
-    `CPU total      : ${specs.cpuThreads}`,
-    `RAM total      : ${toHumanGb(specs.ramMb)} GB (${specs.ramMb} MB)`,
-    `Disk total     : ${specs.diskGb} GB`,
-    "",
-    `CPU host       : ${specs.reserveCpu}`,
-    `RAM host       : ${toHumanGb(specs.reserveRamMb)} GB (${specs.reserveRamMb} MB)`,
-    `Disk host      : ${specs.reserveDiskGb} GB`,
-    "",
-    `CPU terpakai   : ${allocations.cpu}`,
-    `RAM terpakai   : ${toHumanGb(allocations.ramMb)} GB (${allocations.ramMb} MB)`,
-    `Disk terpakai  : ${allocations.diskGb} GB`,
-    "",
-    `Tambahan aman  : ${recommendation.maxAdditional} VM profile ${profileKey}`,
-    `VNC berikutnya : :${findNextVncDisplay()}`
-  ].join("\n");
+  const summary = buildCreateSummary({
+    specs,
+    allocations,
+    profile,
+    recommendation,
+    assessment,
+    baseDiskMinGb,
+    vncDisplay: findNextVncDisplay()
+  });
 
   if (interactive) {
     msgbox("Kapasitas VPS", summary);
@@ -364,9 +362,19 @@ function createContainer(options = {}) {
     console.log(summary);
   }
 
-  if (recommendation.maxAdditional <= 0) {
+  if (profileKey !== "custom" && recommendation.maxAdditional <= 0) {
     notify(interactive, "Create Container", `Resource VPS tidak cukup untuk profile ${profileKey}.`);
     return;
+  }
+  if (profileKey === "custom" && assessment.riskLevel !== "safe") {
+    const warningText = buildCustomRiskWarning(profile, assessment);
+    if (interactive) {
+      if (!yesno("Custom Warning", warningText)) {
+        return;
+      }
+    } else if (!(options.yes === true || options.force === true)) {
+      fatal(`${warningText}\nGunakan --yes untuk melanjutkan create-container custom non-interaktif.`);
+    }
   }
 
   const providedName = sanitizeName(options.name || options.n || "");
@@ -401,6 +409,7 @@ function createContainer(options = {}) {
     osImagePath,
     overlayPath
   ]);
+  resizeOverlayDiskIfNeeded(overlayPath, profile.diskGb, baseDiskMinGb);
 
   const serviceText = renderService({
     vmName,
@@ -416,7 +425,8 @@ function createContainer(options = {}) {
 
   const metadata = {
     vmName,
-    profile: profileKey,
+    profile: profile.key,
+    profileLabel: profile.label,
     cpu: profile.cpu,
     ramMb: profile.ramMb,
     diskGb: profile.diskGb,
@@ -459,7 +469,7 @@ function deleteContainer(options = {}) {
         "Pilih VM yang akan dihapus:",
         containers.map((container) => [
           container.vmName,
-          `${container.profile} | VNC :${container.vncDisplay} | ${container.vmDir}`
+          `${container.profileLabel || container.profile} | VNC :${container.vncDisplay} | ${container.vmDir}`
         ])
       )
     : containers[0].vmName);
@@ -624,6 +634,33 @@ function calculateCapacity(specs, allocations, profile) {
   };
 }
 
+function assessProfileRequest(specs, allocations, profile) {
+  const safeAvailable = {
+    cpu: Math.max(0, specs.cpuThreads - specs.reserveCpu - allocations.cpu),
+    ramMb: Math.max(0, specs.ramMb - specs.reserveRamMb - allocations.ramMb),
+    diskGb: Math.max(0, specs.diskGb - specs.reserveDiskGb - allocations.diskGb)
+  };
+  const physicalAvailable = {
+    cpu: Math.max(0, specs.cpuThreads - allocations.cpu),
+    ramMb: Math.max(0, specs.ramMb - allocations.ramMb),
+    diskGb: Math.max(0, specs.diskGb - allocations.diskGb)
+  };
+  const safeFits = profile.cpu <= safeAvailable.cpu
+    && profile.ramMb <= safeAvailable.ramMb
+    && profile.diskGb <= safeAvailable.diskGb;
+  const physicalFits = profile.cpu <= physicalAvailable.cpu
+    && profile.ramMb <= physicalAvailable.ramMb
+    && profile.diskGb <= physicalAvailable.diskGb;
+
+  return {
+    safeAvailable,
+    physicalAvailable,
+    safeFits,
+    physicalFits,
+    riskLevel: safeFits ? "safe" : (physicalFits ? "warning" : "danger")
+  };
+}
+
 function readContainerAllocations() {
   const containers = listContainers();
   return containers.reduce(
@@ -745,7 +782,7 @@ function buildContainersReport() {
     lines.push(`VM ${index + 1}`);
     lines.push(`Nama         : ${container.vmName}`);
     lines.push(`Status       : ${active ? "online" : "offline"}`);
-    lines.push(`Profil       : ${container.profile}`);
+    lines.push(`Profil       : ${container.profileLabel || container.profile}`);
     lines.push(`CPU          : ${container.cpu}`);
     lines.push(`RAM          : ${container.ramMb} MB (${toHumanGb(container.ramMb)} GB)`);
     lines.push(`Disk         : ${container.diskGb} GB`);
@@ -987,6 +1024,122 @@ function commandExists(command) {
 function describeProfile(profileKey) {
   const profile = VM_PROFILES[profileKey];
   return `${profile.label} | ${profile.cpu} CPU | ${toHumanGb(profile.ramMb)} GB RAM | ${profile.diskGb} GB disk`;
+}
+
+function resolveCustomProfile(options, context) {
+  const interactive = !!context.interactive;
+  const cpu = parsePositiveInteger(
+    options.cpu || options.vcpu || (interactive ? inputbox("Custom CPU", "Masukkan jumlah vCPU:", "1") : null),
+    "CPU"
+  );
+  const ramMb = parsePositiveInteger(
+    options["ram-mb"] || options.ram || (interactive ? inputbox("Custom RAM", "Masukkan RAM dalam MB:", "768") : null),
+    "RAM"
+  );
+  const diskGb = parsePositiveInteger(
+    options["disk-gb"] || options.disk || (interactive ? inputbox("Custom Disk", `Masukkan disk dalam GB (minimum ${context.baseDiskMinGb} GB):`, String(Math.max(context.baseDiskMinGb, 20))) : null),
+    "Disk"
+  );
+
+  if (ramMb < 256) {
+    fatal("RAM custom minimum 256 MB.");
+  }
+  if (diskGb < context.baseDiskMinGb) {
+    fatal(`Disk custom minimum ${context.baseDiskMinGb} GB agar tidak lebih kecil dari image dasar Windows.`);
+  }
+
+  return {
+    key: "custom",
+    label: "Custom",
+    cpu,
+    ramMb,
+    diskGb
+  };
+}
+
+function parsePositiveInteger(value, label) {
+  if (value === null || value === undefined || String(value).trim() === "") {
+    fatal(`${label} wajib diisi.`);
+  }
+
+  const parsed = Number.parseInt(String(value), 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    fatal(`${label} harus berupa bilangan bulat positif.`);
+  }
+  return parsed;
+}
+
+function getBaseImageMinDiskGb(imagePath) {
+  return Math.max(1, Math.ceil(fs.statSync(imagePath).size / (1024 ** 3)));
+}
+
+function resizeOverlayDiskIfNeeded(overlayPath, requestedDiskGb, baseDiskMinGb) {
+  if (requestedDiskGb > baseDiskMinGb) {
+    runCommand("qemu-img", ["resize", overlayPath, `${requestedDiskGb}G`]);
+  }
+}
+
+function buildCreateSummary({ specs, allocations, profile, recommendation, assessment, baseDiskMinGb, vncDisplay }) {
+  return [
+    `CPU total      : ${specs.cpuThreads}`,
+    `RAM total      : ${toHumanGb(specs.ramMb)} GB (${specs.ramMb} MB)`,
+    `Disk total     : ${specs.diskGb} GB`,
+    "",
+    `CPU host       : ${specs.reserveCpu}`,
+    `RAM host       : ${toHumanGb(specs.reserveRamMb)} GB (${specs.reserveRamMb} MB)`,
+    `Disk host      : ${specs.reserveDiskGb} GB`,
+    "",
+    `CPU terpakai   : ${allocations.cpu}`,
+    `RAM terpakai   : ${toHumanGb(allocations.ramMb)} GB (${allocations.ramMb} MB)`,
+    `Disk terpakai  : ${allocations.diskGb} GB`,
+    "",
+    `Profil         : ${profile.label}`,
+    `Request CPU    : ${profile.cpu}`,
+    `Request RAM    : ${toHumanGb(profile.ramMb)} GB (${profile.ramMb} MB)`,
+    `Request Disk   : ${profile.diskGb} GB`,
+    `Disk minimum   : ${baseDiskMinGb} GB (image dasar)`,
+    "",
+    `Aman tersedia  : CPU ${assessment.safeAvailable.cpu} | RAM ${assessment.safeAvailable.ramMb} MB | Disk ${assessment.safeAvailable.diskGb} GB`,
+    `Fisik tersedia : CPU ${assessment.physicalAvailable.cpu} | RAM ${assessment.physicalAvailable.ramMb} MB | Disk ${assessment.physicalAvailable.diskGb} GB`,
+    `Status request : ${describeRiskLevel(assessment.riskLevel)}`,
+    `Tambahan aman  : ${recommendation.maxAdditional} VM dengan spesifikasi ini`,
+    `VNC berikutnya : :${vncDisplay} (port ${5900 + vncDisplay})`
+  ].join("\n");
+}
+
+function describeRiskLevel(riskLevel) {
+  switch (riskLevel) {
+    case "safe":
+      return "Aman sesuai reserve host";
+    case "warning":
+      return "Melewati rekomendasi reserve host";
+    case "danger":
+      return "Melewati resource fisik tersisa";
+    default:
+      return riskLevel;
+  }
+}
+
+function buildCustomRiskWarning(profile, assessment) {
+  const lines = [
+    "Custom VM ini melewati batas aman default.",
+    `Spec request : CPU ${profile.cpu} | RAM ${profile.ramMb} MB | Disk ${profile.diskGb} GB`,
+    `Status       : ${describeRiskLevel(assessment.riskLevel)}`
+  ];
+
+  if (!assessment.safeFits) {
+    lines.push(
+      `Aman tersedia: CPU ${assessment.safeAvailable.cpu} | RAM ${assessment.safeAvailable.ramMb} MB | Disk ${assessment.safeAvailable.diskGb} GB`
+    );
+  }
+  if (!assessment.physicalFits) {
+    lines.push(
+      `Fisik tersisa : CPU ${assessment.physicalAvailable.cpu} | RAM ${assessment.physicalAvailable.ramMb} MB | Disk ${assessment.physicalAvailable.diskGb} GB`
+    );
+  }
+
+  lines.push("", "Tetap lanjutkan?");
+  return lines.join("\n");
 }
 
 function sanitizeName(value) {
