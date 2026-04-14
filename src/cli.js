@@ -189,14 +189,38 @@ function setupQemu(options = {}) {
   }
 
   runCommand("apt-get", ["update"]);
-  runCommand("apt-get", ["install", "-y", "qemu"]);
-  runCommand("apt-get", ["install", "-y", "qemu-utils"]);
-  runCommand("apt-get", ["install", "-y", "qemu-system-x86-xen"]);
-  runCommand("apt-get", ["install", "-y", "qemu-system-x86"]);
-  runCommand("apt-get", ["install", "-y", "qemu-kvm"]);
-  runCommand("apt-get", ["install", "-y", "whiptail", "curl", "zstd"]);
+  installAptPackages({
+    required: ["qemu-utils", "qemu-system-x86", "whiptail", "curl", "zstd"],
+    optional: ["qemu-system-x86-xen", "qemu", "qemu-kvm"]
+  });
 
   notify(interactive, "Setup qemu", "Instalasi QEMU selesai.");
+}
+
+function installAptPackages({ required, optional }) {
+  const missingRequired = required.filter((packageName) => !aptPackageAvailable(packageName));
+  if (missingRequired.length > 0) {
+    fatal(`Package wajib tidak tersedia di repo apt: ${missingRequired.join(", ")}`);
+  }
+
+  const availableOptional = optional.filter((packageName) => aptPackageAvailable(packageName));
+  const skippedOptional = optional.filter((packageName) => !aptPackageAvailable(packageName));
+  const packagesToInstall = [...required, ...availableOptional];
+
+  if (skippedOptional.length > 0) {
+    console.log(`Skip package optional yang tidak tersedia: ${skippedOptional.join(", ")}`);
+  }
+
+  runCommand("apt-get", ["install", "-y", ...packagesToInstall]);
+}
+
+function aptPackageAvailable(packageName) {
+  const result = spawnSync("apt-cache", ["policy", packageName], { encoding: "utf8" });
+  if (result.status !== 0) {
+    return false;
+  }
+
+  return !/^  Candidate:\s+\(none\)$/m.test(result.stdout);
 }
 
 function downloadOs(options = {}) {
