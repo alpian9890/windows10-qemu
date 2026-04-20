@@ -83,6 +83,15 @@ function main() {
       case "create-container":
         createContainer(parseArgs(rest));
         return;
+      case "start-container":
+        startContainer(parseArgs(rest));
+        return;
+      case "stop-container":
+        stopContainer(parseArgs(rest));
+        return;
+      case "restart-container":
+        restartContainer(parseArgs(rest));
+        return;
       case "delete-container":
         deleteContainer(parseArgs(rest));
         return;
@@ -144,6 +153,9 @@ function runInteractiveMenu() {
       ["download-virtio", "Download driver virtio"],
       ["list", "List Containers"],
       ["create", "Create Container"],
+      ["start", "Start Container"],
+      ["stop", "Stop Container"],
+      ["restart", "Restart Container"],
       ["delete", "Delete Container"],
       ["uninstall", "Uninstall"],
       ["exit", "Keluar"]
@@ -167,6 +179,15 @@ function runInteractiveMenu() {
         break;
       case "create":
         createContainer({ interactive: true });
+        break;
+      case "start":
+        startContainer({ interactive: true });
+        break;
+      case "stop":
+        stopContainer({ interactive: true });
+        break;
+      case "restart":
+        restartContainer({ interactive: true });
         break;
       case "delete":
         deleteContainer({ interactive: true });
@@ -299,6 +320,70 @@ function listContainersCommand(options = {}) {
   const interactive = !!options.interactive;
   const report = buildContainersReport();
   notify(interactive, "List Containers", report);
+}
+
+function startContainer(options = {}) {
+  controlContainerService(options, "start");
+}
+
+function stopContainer(options = {}) {
+  controlContainerService(options, "stop");
+}
+
+function restartContainer(options = {}) {
+  controlContainerService(options, "restart");
+}
+
+function controlContainerService(options = {}, action) {
+  const interactive = !!options.interactive;
+  const containers = listContainers();
+  const title = `${capitalize(action)} Container`;
+
+  if (containers.length === 0) {
+    notify(interactive, title, "Belum ada VM yang dibuat oleh winmu.");
+    return;
+  }
+
+  const requestedName = options.name || options.n;
+  const choice = requestedName || (interactive
+    ? menu(
+        title,
+        `Pilih VM yang akan di-${action}:`,
+        containers.map((container) => [
+          container.vmName,
+          `${container.profileLabel || container.profile} | ${systemdUnitIsActive(container.service) ? "online" : "offline"} | VNC :${container.vncDisplay}`
+        ])
+      )
+    : containers[0].vmName);
+
+  if (!choice) {
+    return;
+  }
+
+  const container = containers.find((item) => item.vmName === choice);
+  if (!container) {
+    fatal(`VM tidak ditemukan: ${choice}`);
+  }
+
+  const beforeActive = systemdUnitIsActive(container.service);
+  if (interactive && !yesno(title, `${capitalize(action)} VM ${container.vmName}?`)) {
+    return;
+  }
+
+  runCommand("systemctl", [action, container.service]);
+  const afterActive = systemdUnitIsActive(container.service);
+
+  notify(
+    interactive,
+    title,
+    [
+      `VM           : ${container.vmName}`,
+      `Action       : ${action}`,
+      `Status awal  : ${beforeActive ? "online" : "offline"}`,
+      `Status akhir : ${afterActive ? "online" : "offline"}`,
+      `Service      : ${container.service}`
+    ].join("\n")
+  );
 }
 
 function uninstallWinmu(options = {}) {
@@ -825,6 +910,10 @@ function buildContainersReport() {
   });
 
   return lines.join("\n").trimEnd();
+}
+
+function capitalize(value) {
+  return String(value).charAt(0).toUpperCase() + String(value).slice(1);
 }
 
 function getVncPort(vncDisplay) {

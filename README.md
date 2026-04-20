@@ -8,6 +8,7 @@ Fitur utama:
 - Download OS Windows dari GitHub Releases lalu ekstrak ke `/etc/winmu/os`
 - Download driver virtio ke `/etc/winmu/virtio`
 - Create/List/Delete VM QEMU yang disimpan di `~/<nama-vm>`
+- Start/Stop/Restart container VM dari TUI atau CLI
 - Profil VM `small`, `medium`, `large`, dan `custom`
 - Menjalankan VM sebagai service `systemd`
 - Menyiapkan split archive asset OS untuk GitHub Releases
@@ -43,6 +44,14 @@ Untuk create container custom dari CLI:
 
 ```bash
 winmu create-container --profile custom --cpu 1 --ram-mb 768 --disk-gb 20 --name win10-custom --yes
+```
+
+Untuk mengelola service container dari CLI:
+
+```bash
+winmu start-container --name nama-vm
+winmu stop-container --name nama-vm
+winmu restart-container --name nama-vm
 ```
 
 Mode `custom` tetap menampilkan rekomendasi aman, tetapi keputusan akhir ada di pengguna. Gunakan `--yes` jika ingin tetap lanjut saat spec custom melewati rekomendasi aman default.
