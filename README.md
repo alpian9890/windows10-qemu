@@ -53,12 +53,24 @@ Default login Windows 10 Pro:
 
 ```text
 Username: Admin
-Password: Admin
+Password: kosong
 ```
 
 Catatan recovery question:
 
 - Untuk semua pertanyaan recovery, isi `Admin`
+
+## Akses VNC
+
+VNC winmu bind ke `127.0.0.1` saja dan tidak dibuka ke public internet. Akses VNC harus lewat SSH tunnel dari host yang punya akses SSH ke VPS.
+
+Contoh untuk VM dengan port `5901`:
+
+```bash
+ssh -L 5901:127.0.0.1:5901 <user>@<host>
+```
+
+Cek port setiap VM dengan `winmu list-containers`.
 
 ## Utility untuk maintainer
 

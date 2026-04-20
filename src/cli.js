@@ -17,6 +17,7 @@ const TMP_DIR = path.join(BASE_DIR, "tmp");
 const CONFIG_PATH = path.join(BASE_DIR, "config.json");
 const SYSTEMD_DIR = "/etc/systemd/system";
 const HOME_DIR = os.homedir();
+const VNC_BIND_HOST = "127.0.0.1";
 
 const DEFAULT_CONFIG = {
   github: {
@@ -472,7 +473,9 @@ function createContainer(options = {}) {
       `VM berhasil dibuat: ${vmName}`,
       `Folder       : ${vmDir}`,
       `Service      : ${systemdServiceName}`,
-      `VNC          : :${vncDisplay} (port ${5900 + vncDisplay})`,
+      `VNC bind     : ${VNC_BIND_HOST}:${getVncPort(vncDisplay)}`,
+      "Akses VNC   : SSH tunnel only",
+      `Contoh SSH  : ${buildSshTunnelHint(vncDisplay)}`,
       `Overlay disk : ${overlayPath}`
     ].join("\n")
   );
@@ -762,6 +765,7 @@ function buildStatusReport() {
     `Command siap   : ${installedRuntimeCommands.join(", ") || "-"}`,
     `Command hilang : ${missingRuntimeCommands.join(", ") || "-"}`,
     `KVM device     : ${fs.existsSync("/dev/kvm") ? "Ada" : "Tidak ada"}`,
+    `VNC policy     : Localhost only (${VNC_BIND_HOST})`,
     "",
     "=== Asset /etc/winmu ===",
     `Folder base    : ${fs.existsSync(BASE_DIR) ? "Ada" : "Tidak ada"} (${BASE_DIR})`,
@@ -811,7 +815,9 @@ function buildContainersReport() {
     lines.push(`RAM          : ${container.ramMb} MB (${toHumanGb(container.ramMb)} GB)`);
     lines.push(`Disk         : ${container.diskGb} GB`);
     lines.push(`VNC display  : :${container.vncDisplay}`);
-    lines.push(`VNC port     : ${5900 + Number(container.vncDisplay)}`);
+    lines.push(`VNC bind     : ${VNC_BIND_HOST}:${getVncPort(container.vncDisplay)}`);
+    lines.push("VNC access   : SSH tunnel only");
+    lines.push(`Contoh SSH   : ${buildSshTunnelHint(container.vncDisplay)}`);
     lines.push(`Folder VM    : ${container.vmDir}`);
     lines.push(`Disk overlay : ${container.overlayPath}`);
     lines.push(`Service      : ${container.service}`);
@@ -819,6 +825,15 @@ function buildContainersReport() {
   });
 
   return lines.join("\n").trimEnd();
+}
+
+function getVncPort(vncDisplay) {
+  return 5900 + Number(vncDisplay);
+}
+
+function buildSshTunnelHint(vncDisplay) {
+  const port = getVncPort(vncDisplay);
+  return `ssh -L ${port}:${VNC_BIND_HOST}:${port} <user>@<host>`;
 }
 
 function fileStatusLine(filePath) {
@@ -880,7 +895,7 @@ function renderService({ vmName, vmDir, overlayPath, profile, vncDisplay, kvmEna
     "-netdev user,id=net0",
     "-device virtio-net-pci,netdev=net0",
     "-display none",
-    `-vnc 0.0.0.0:${vncDisplay}`,
+    `-vnc ${VNC_BIND_HOST}:${vncDisplay}`,
     "-monitor none",
     "-serial none"
   ];
@@ -1127,7 +1142,9 @@ function buildCreateSummary({ specs, allocations, profile, recommendation, asses
     `Fisik tersedia : CPU ${assessment.physicalAvailable.cpu} | RAM ${assessment.physicalAvailable.ramMb} MB | Disk ${assessment.physicalAvailable.diskGb} GB`,
     `Status request : ${describeRiskLevel(assessment.riskLevel)}`,
     `Tambahan aman  : ${recommendation.maxAdditional} VM dengan spesifikasi ini`,
-    `VNC berikutnya : :${vncDisplay} (port ${5900 + vncDisplay})`
+    `VNC berikutnya : :${vncDisplay} (${VNC_BIND_HOST}:${getVncPort(vncDisplay)})`,
+    "Akses VNC     : SSH tunnel only",
+    `Contoh SSH    : ${buildSshTunnelHint(vncDisplay)}`
   ].join("\n");
 }
 
